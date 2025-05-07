@@ -139,10 +139,9 @@ graph TD;
 
 1. Creator lists a recipe (off-chain or via backend).
 2. Buyer clicks "buy" on Marketplace.
-3. Payment is processed in USDC/USDT.
-4. Marketplace calls `buyLazyMintedRecipe()`.
-5. NFT is minted directly to buyer.
-6. Creator is recorded in `creatorOf[tokenId]`.
+3. Marketplace calls `buyLazyMintedRecipe()`.
+4. NFT is minted directly to buyer.
+5. Creator is recorded in `creatorOf[tokenId]`.
 
 ## 🧪 Testing Coverage
 
