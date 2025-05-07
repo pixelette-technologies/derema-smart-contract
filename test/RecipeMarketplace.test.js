@@ -15,7 +15,7 @@ describe("RecipeMarketplace Contract", function () {
     usdc = await ERC20Mock.deploy("USDC", "USDC");
     usdt = await ERC20Mock.deploy("USDT", "USDT");
 
-    const Subscription = await ethers.getContractFactory("MattiaSubscription");
+    const Subscription = await ethers.getContractFactory("RecipeSubscription");
     subscriptionContract = await Subscription.deploy(usdc.target, usdt.target);
 
     // Deploy RecipeNFT Contract

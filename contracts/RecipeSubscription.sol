@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title Subscription
  * @dev Manages user subscriptions for the platform
  */
-contract MattiaSubscription is Ownable, Pausable, ReentrancyGuard {
+contract RecipeSubscription is Ownable, Pausable, ReentrancyGuard {
 
     /**
      * @notice Struct to represent a user's active subscription
