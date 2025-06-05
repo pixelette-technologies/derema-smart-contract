@@ -4,6 +4,7 @@ const deployMockToken = async (name, symbol) => {
     const mockERC20 =  await hre.ethers.getContractFactory("contracts/MockERC20.sol:MockERC20");
     console.log(`🚀 ~ Mock token deployment started ~ (${name}) (${symbol})`);
     const MockERC20 =  await mockERC20.deploy(name, symbol);
+    await MockERC20.waitForDeployment();
     const deployedAddress = await MockERC20.getAddress();
     console.log("🚀 ~ deployMockToken ~ deployedAddress:", deployedAddress)
     return deployedAddress;

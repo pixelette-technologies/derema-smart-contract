@@ -22,7 +22,7 @@ interface ISubscription {
  */
 contract RecipeNFT is ERC721A, Ownable, ERC2981 {
     uint256 private constant ROYALTY_FEE_MAX_BPS = 1000;
-    uint256 private constant MAX_COPIES = 20;
+    uint256 private constant MAX_COPIES = 300;
 
     string private placeholderURI;
     address public subscriptionContract;
@@ -62,7 +62,7 @@ contract RecipeNFT is ERC721A, Ownable, ERC2981 {
      */
     function mintRecipeForPaidUsers(uint256 _amount, uint96 _royaltyFeeBps) external onlyPaidSubscriber {
         require(_royaltyFeeBps <= ROYALTY_FEE_MAX_BPS, "Royalty fee exceeds max 10%");
-        require(_amount > 0 && _amount <= MAX_COPIES, "Must mint between 1 and 21 copies");
+        require(_amount > 0 && _amount <= MAX_COPIES, "Must mint between 1 and 300 copies");
 
         uint256 startTokenId = _nextTokenId();
         for (uint256 i = 0; i < _amount; i++) {

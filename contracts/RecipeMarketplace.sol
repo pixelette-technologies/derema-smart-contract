@@ -14,6 +14,8 @@ interface IRecipeNFT is IERC721A {
 }
 
 contract RecipeMarketplace is Ownable, ReentrancyGuard {
+    uint256 private constant MAX_LISTINGS = 300;
+
     struct Listing {
         uint256 price;
         address seller;
@@ -91,6 +93,32 @@ contract RecipeMarketplace is Ownable, ReentrancyGuard {
 
         emit RecipeListed(_tokenId, msg.sender, _price, _paymentToken);
     }
+    
+
+    /**
+     * @dev Lists a batch of recipes for sale on the marketplace for subscribed users.
+     * @param tokenIds Token IDs of the batch recipies to list.
+     * @param price Price for each.
+     * @param paymentToken The address of the payment token (USDC or USDT).
+     */
+
+    function batchListRecipes(uint256[] calldata tokenIds, uint256 price, address paymentToken) external onlyPaidUser {
+        require(tokenIds.length >= MAX_LISTINGS, "exceeds max liisting of 300");
+        require(price > 0, "Price must be > 0");
+        require(allowedPaymentTokens[paymentToken], "Unsupported token");
+        require( recipeNFT.isApprovedForAll(msg.sender, address(this)), "Marketplace not approved");
+
+        for (uint256 i = 0; i < tokenIds.length; i++) {
+        uint256 tokenId = tokenIds[i];
+        require(recipeNFT.ownerOf(tokenId) == msg.sender, "Not owner");
+        require(listings[tokenId].price == 0, "already listed");
+        
+        listings[tokenId] = Listing(price, msg.sender, paymentToken);
+
+        emit RecipeListed(tokenId, msg.sender, price, paymentToken);
+        }
+    }
+
 
     /**
      * @dev Allows a subscribed user to buy a listed recipe.
