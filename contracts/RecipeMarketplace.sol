@@ -81,6 +81,7 @@ contract RecipeMarketplace is Ownable, ReentrancyGuard {
         require(recipeNFT.ownerOf(_tokenId) == msg.sender, "Not owner");
         require(_price > 0, "Price must be greater than 0");
         require(allowedPaymentTokens[_paymentToken], "Unsupported payment token");
+        require(listings[_tokenId].price == 0, "already listed");
         require(
             recipeNFT.getApproved(_tokenId) == address(this) || recipeNFT.isApprovedForAll(msg.sender, address(this)),
             "Marketplace not approved"
@@ -110,11 +111,12 @@ contract RecipeMarketplace is Ownable, ReentrancyGuard {
 
         for (uint256 i = 0; i < tokenIds.length; i++) {
         uint256 tokenId = tokenIds[i];
-        require(recipeNFT.ownerOf(tokenId) == msg.sender, "Not owner");
-        require(listings[tokenId].price == 0, "already listed");
+
+        if (recipeNFT.ownerOf(tokenId) == msg.sender || listings[tokenId].price != 0) {
+            continue;
+        }
         
         listings[tokenId] = Listing(price, msg.sender, paymentToken);
-
         emit RecipeListed(tokenId, msg.sender, price, paymentToken);
         }
     }
