@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { ERC721A } from "erc721a/contracts/ERC721A.sol";
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
-import { ERC2981 } from "@openzeppelin/contracts/token/common/ERC2981.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { ERC721AUpgradeable } from "erc721a-upgradeable/contracts/ERC721AUpgradeable.sol";
+import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import { ERC2981Upgradeable } from "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 interface ISubscription {
     function subscriptions(address user) external view returns (
@@ -20,29 +23,41 @@ interface ISubscription {
  * @title RecipeNFT
  * @dev A contract for minting, managing, and interacting with Recipe NFTs.
  */
-contract RecipeNFT is ERC721A, Ownable, ERC2981 {
+contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, PausableUpgradeable, ERC2981Upgradeable, UUPSUpgradeable {
     uint256 private constant ROYALTY_FEE_MAX_BPS = 1000;
-    uint256 private constant MAX_COPIES = 20;
+    uint256 private constant MAX_COPIES = 300;
 
     string private placeholderURI;
     address public subscriptionContract;
 
     mapping(uint256 => address) public creatorOf;
 
+    /**
+     * @dev Storage gap for future upgrades
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
+     * state-variable-assignment 
+     */ 
+    uint256[50] private __gap;
+
     event RecipeMinted(address indexed user, uint256 indexed startTokenId, uint256 count);
     event SubscriptionContractUpdated(address indexed newSubscriptionContract);
     event PlaceholderURIUpdated(string newURI);
-     
-    /**
-     * @dev Constructor to initialize the contract with subscription contract, and placeholder URI.
-     * @param _subscriptionContract Address of the subscription contract.
-     * @param _URI Placeholder URI for the Recipe NFTs.
-     */
-    constructor(address _subscriptionContract, string memory _URI)
-        ERC721A("RecipeNFT", "RCP")
-        Ownable(msg.sender)
-    {
+
+     /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _subscriptionContract,
+        string memory _URI
+    ) public initializer {
         require(_subscriptionContract != address(0), "Invalid subscription contract");
+
+        __Ownable_init(msg.sender);
+        __Pausable_init();
+        __UUPSUpgradeable_init();  // Initialize UUPSUpgradeable
+
         subscriptionContract = _subscriptionContract;
         placeholderURI = _URI;
     }
@@ -60,9 +75,9 @@ contract RecipeNFT is ERC721A, Ownable, ERC2981 {
      * @param _amount Number of copies to mint.
      * @param _royaltyFeeBps Royalty fee in basis points (100 basis points = 1%).
      */
-    function mintRecipeForPaidUsers(uint256 _amount, uint96 _royaltyFeeBps) external onlyPaidSubscriber {
+    function mintRecipeForPaidUsers(uint256 _amount, uint96 _royaltyFeeBps) external whenNotPaused onlyPaidSubscriber {
         require(_royaltyFeeBps <= ROYALTY_FEE_MAX_BPS, "Royalty fee exceeds max 10%");
-        require(_amount > 0 && _amount <= MAX_COPIES, "Must mint between 1 and 21 copies");
+        require(_amount > 0 && _amount <= MAX_COPIES, "Must mint between 1 and 300 copies");
 
         uint256 startTokenId = _nextTokenId();
         for (uint256 i = 0; i < _amount; i++) {
@@ -79,7 +94,7 @@ contract RecipeNFT is ERC721A, Ownable, ERC2981 {
      * @param _creator The creator of the recipe.
      * @param _amount The number of copies to mint.
      */
-    function buyLazyMintedRecipe(address _creator, uint256 _amount) external {
+    function buyLazyMintedRecipe(address _creator, uint256 _amount) external whenNotPaused {
         require(_amount > 0 && _amount < MAX_COPIES, "Must mint between 1 and 21 copies");
         require(_creator != address(0), "Invalid address");
 
@@ -135,12 +150,37 @@ contract RecipeNFT is ERC721A, Ownable, ERC2981 {
         return placeholderURI;
     }
 
+    /**
+     * @notice Pauses the contract, preventing certain functions from being executed.
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /**
+     * @notice Unpauses the contract, allowing functions to be executed again.
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    function nextTokenId() external view returns (uint256) {
+        return _nextTokenId();
+    }
+
+    /**
+     * @dev Required function for UUPSUpgradeable to restrict upgraded to only owner.
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        require(newImplementation != address(0), "Invalid address");
+    }
+
     function supportsInterface(bytes4 interfaceId)
         public
         view
-        override(ERC721A, ERC2981)
+        override(ERC721AUpgradeable, ERC2981Upgradeable)
         returns (bool)
     {
-        return interfaceId == type(ERC2981).interfaceId || super.supportsInterface(interfaceId);
+        return interfaceId == type(ERC2981Upgradeable).interfaceId || super.supportsInterface(interfaceId);
     }
 }

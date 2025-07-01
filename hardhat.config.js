@@ -21,7 +21,7 @@ module.exports = {
     }
   },
 
-  defaultNetwork: "hardhat",
+  defaultNetwork: "bscTestnet",
   
   networks: {
     hardhat: { 
@@ -30,12 +30,14 @@ module.exports = {
     bscTestnet: {
       url: process.env.BSC_TESTNET_RPC_URL,
       chainId: 97,
-      accounts: [process.env.PRIVATE_KEY]
+      accounts: [process.env.PRIVATE_KEY],
+      timeout: 12000000000 // 2 minutess
     },
     bsc: {
       url: process.env.BSC_MAINNET_RPC_URL, 
       chainId: 56, 
-      accounts: [process.env.PRIVATE_KEY]
+      accounts: [process.env.PRIVATE_KEY],
+      timeout: 12000000000 // 2 minutess
     }
   }
 };

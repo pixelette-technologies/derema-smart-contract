@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("MattiaSubscription", function () {
+describe("RecipeSubscription", function () {
   let subscription, usdc, usdt, owner, user, user2;
 
   const subscriptionPrice = ethers.parseUnits("199", 6); // 199 USDC/USDT
@@ -13,13 +13,12 @@ describe("MattiaSubscription", function () {
     usdc = await Token.deploy("USDC Token", "USDC");
     usdt = await Token.deploy("USDT Token", "USDT");
 
-    const Subscription = await ethers.getContractFactory("MattiaSubscription");
+    const Subscription = await ethers.getContractFactory("RecipeSubscription");
     subscription = await Subscription.deploy(usdc.target, usdt.target);
 
     await usdc.mint(user.address, ethers.parseUnits("1000", 6));
     await usdt.mint(user.address, ethers.parseUnits("1000", 6));
     await usdt.mint(user2.address, ethers.parseUnits("1000", 6));
-
   });
 
   it("should allow user to subscribe with USDC", async () => {

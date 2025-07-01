@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title Subscription
  * @dev Manages user subscriptions for the platform
  */
-contract MattiaSubscription is Ownable, Pausable, ReentrancyGuard {
+contract RecipeSubscription is Initializable, PausableUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
 
     /**
      * @notice Struct to represent a user's active subscription
@@ -28,13 +30,13 @@ contract MattiaSubscription is Ownable, Pausable, ReentrancyGuard {
     /**
      * @notice The ERC20 tokens that users can use for payments
      */
-    IERC20 public immutable usdcToken;
-    IERC20 public immutable usdtToken;
+    IERC20 public usdcToken;
+    IERC20 public usdtToken;
  
     /**
      * @notice Subscription price in USDC & USDT
      */
-    uint256 public subscriptionPrice = 199 * 10**6;
+    uint256 public subscriptionPrice;
 
     /**
      * @notice Mapping of user addresses to their subscription details
@@ -46,20 +48,40 @@ contract MattiaSubscription is Ownable, Pausable, ReentrancyGuard {
      */
     mapping(address => bool) public isPremium;
 
+    /**
+     * @dev Storage gap for future upgrades
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
+     * state-variable-assignment 
+     */ 
+    uint256[50] private __gap;
+
+
     event SubscriptionPurchased(address indexed user, uint256 startTime, uint256 endTime);
     event SubscriptionRenewed(address indexed user, uint256 startTime, uint256 newEndTime);
     event SubscriptionCancelled(address indexed user, uint256 cancellationTime);
     event SubscriptionPriceUpdated(uint256 oldPrice, uint256 newPrice);
 
-    /**
-     * @dev Constructor sets the USDC token address
-     * @param _usdcToken Address of the USDC token contract
-     */
-    constructor(address _usdcToken, address _usdtToken) Ownable(msg.sender) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _usdcToken,
+        address _usdtToken
+    ) public initializer {
         require(_usdcToken != address(0), "Invalid USDC address");
         require(_usdtToken != address(0), "Invalid USDT address");
+
+        __Pausable_init();
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+
         usdcToken = IERC20(_usdcToken);
         usdtToken = IERC20(_usdtToken);
+        subscriptionPrice = 10000;
+
     }
 
     modifier subscriptionNotExpired() {
@@ -154,5 +176,12 @@ contract MattiaSubscription is Ownable, Pausable, ReentrancyGuard {
     function withdrawUSDT() external onlyOwner {
         uint256 usdtBalance = usdtToken.balanceOf(address(this));
         usdtToken.transfer(owner(), usdtBalance);
+    }
+
+    /**
+     * @dev Required function for UUPSUpgradeable to restrict upgraded to only owner.
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        require(newImplementation != address(0), "Invalid address");
     }
 }
