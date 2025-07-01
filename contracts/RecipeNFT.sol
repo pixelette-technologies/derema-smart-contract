@@ -164,6 +164,10 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
         _unpause();
     }
 
+    function nextTokenId() external view returns (uint256) {
+        return _nextTokenId();
+    }
+
     /**
      * @dev Required function for UUPSUpgradeable to restrict upgraded to only owner.
      */

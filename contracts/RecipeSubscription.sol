@@ -36,7 +36,7 @@ contract RecipeSubscription is Initializable, PausableUpgradeable, OwnableUpgrad
     /**
      * @notice Subscription price in USDC & USDT
      */
-    uint256 public subscriptionPrice = 10000; // for mainnet it is (199 * 10**6)
+    uint256 public subscriptionPrice;
 
     /**
      * @notice Mapping of user addresses to their subscription details
@@ -80,6 +80,8 @@ contract RecipeSubscription is Initializable, PausableUpgradeable, OwnableUpgrad
 
         usdcToken = IERC20(_usdcToken);
         usdtToken = IERC20(_usdtToken);
+        subscriptionPrice = 10000;
+
     }
 
     modifier subscriptionNotExpired() {
