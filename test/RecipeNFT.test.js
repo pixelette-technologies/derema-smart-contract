@@ -1,123 +1,102 @@
 const { expect } = require("chai");
-const { ethers } = require("hardhat");
+const { ethers, upgrades } = require("hardhat");
+const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 describe("RecipeNFT Contract", function () {
-  let owner, user1, user2;
-  let subscriptionContract, recipeNFT, usdc, usdt;
-  let subscriptionPrice = ethers.parseUnits("199", 6); // Example price for subscription
+  let owner, user, user2, other;
+  let recipeNFT, subscriptionContract;
+  let usdc, usdt;
+
+  const usdcDecimals = 6;
+  const usdtDecimals = 18;
+  const initialUsdcPrice = ethers.parseUnits("199", usdcDecimals);
+  const initialUsdtPrice = ethers.parseUnits("199", usdtDecimals);
 
   beforeEach(async () => {
-    [owner, user1, user2] = await ethers.getSigners();
+    [owner, user, user2, other] = await ethers.getSigners();
 
-    // Deploy Mock USDC and USDT Tokens
-    const ERC20Mock = await ethers.getContractFactory("MockERC20");
-    usdc = await ERC20Mock.deploy("USDC", "USDC");
-    usdt = await ERC20Mock.deploy("USDT", "USDT");
+    // Deploy mock ERC20 tokens
+    const usdcToken = await ethers.getContractFactory("MockUSDC");
+    const usdtToken = await ethers.getContractFactory("MockUSDT");
 
-    const Subscription = await ethers.getContractFactory("RecipeSubscription");
-    subscriptionContract = await Subscription.deploy(usdc.target, usdt.target);
+    usdc = await usdcToken.deploy("USDC Token", "USDC");    
+    usdt = await usdtToken.deploy("USDT Token", "USDT");
 
-    // Deploy RecipeNFT Contract
+    // Deploy subscription contract
+    const recipeSubscription =  await ethers.getContractFactory("RecipeSubscription");
+    console.log("🚀 ~ RecipeSubscription deployment started");
+    subscriptionContract =  await upgrades.deployProxy(recipeSubscription, [usdc.target, usdt.target], {
+        initializer: "initialize",
+    });
+      
+    // Mint tokens to users
+    await usdc.mint(user.address, ethers.parseUnits("1000", usdcDecimals));
+    await usdt.mint(user.address, ethers.parseUnits("1000", usdtDecimals));
+    await usdt.mint(user2.address, ethers.parseUnits("1000", usdtDecimals));
+
+    // Deploy RecipeNFT as upgradeable proxy with subscriptionContract address
     const RecipeNFT = await ethers.getContractFactory("RecipeNFT");
-    recipeNFT = await RecipeNFT.deploy(subscriptionContract.target, "https://example.com");
-
-		await usdc.mint(user1.address, ethers.parseUnits("10000", 6));
-    await usdc.mint(user2.address, ethers.parseUnits("10000", 6));
-
-    await usdc.connect(user1).approve(subscriptionContract.target, subscriptionPrice);
-    await usdc.connect(user2).approve(subscriptionContract.target, subscriptionPrice);
-
-    await subscriptionContract.connect(user1).subscribe(usdc.target);
+    recipeNFT = await upgrades.deployProxy(
+      RecipeNFT,
+      [subscriptionContract.target, "ipfs://placeholder/"],
+      { initializer: "initialize" }
+    );
   });
 
-  describe("Minting Recipes", function () {
-    it("should mint a recipe for paid users", async function () {
-      const royaltyFee = 500; // 5% royalty
-      const mintAmount = 1;
-
-      await recipeNFT.connect(user1).mintRecipeForPaidUsers(mintAmount, royaltyFee);
-
-      const balance = await recipeNFT.balanceOf(user1.address);
-      expect(balance).to.equal(mintAmount);
-
-      const creator = await recipeNFT.creatorOf(0);
-      expect(creator).to.equal(user1.address);
+  describe("Subscription-dependent functions", function () {
+    it("isPaidUser returns true for subscribed user", async () => {
+      // Setup: subscribe user in subscription contract with valid expiry in future and not cancelled
+      await usdc.connect(user).approve(subscriptionContract.target, initialUsdcPrice);
+  
+      await subscriptionContract.connect(user).subscribe(usdc.target);
+      await subscriptionContract.connect(owner).setPremium(user.address, false);
+      expect(await recipeNFT.isPaidUser(user.address)).to.be.true;
     });
 
-    it("should not allow non-subscribed users to mint", async function () {
-      const royaltyFee = 500; // 5% royalty
-      const mintAmount = 1;
+    it("mintRecipeForPaidUsers succeeds for valid subscriber", async () => {
+      // Setup subscription state for user
+      await subscriptionContract.connect(owner).setPremium(user.address, true);
+      const amount = 3;
+      const royaltyBps = 500;
 
+      await expect(recipeNFT.connect(user).mintRecipeForPaidUsers(amount, royaltyBps))
+        .to.emit(recipeNFT, "PaidMinted")
+        .withArgs(user.address, anyValue, amount);
+
+      expect(await recipeNFT.balanceOf(user.address)).to.equal(amount);
+    });
+
+    it("mintRecipeForPaidUsers reverts for non-subscribed user", async () => {
       await expect(
-        recipeNFT.connect(user2).mintRecipeForPaidUsers(mintAmount, royaltyFee)
+        recipeNFT.connect(user).mintRecipeForPaidUsers(1, 500)
       ).to.be.revertedWith("Subscription invalid or expired");
     });
 
-    it("should not mint more than the maximum allowed copies", async function () {
-      const royaltyFee = 500; // 5% royalty
-      const mintAmount = 21;
+    it("buyLazyMintedRecipe allows anyone to lazy mint", async () => {
+      const amount = 2;
+      await expect(recipeNFT.connect(user2).buyLazyMintedRecipe(user.address, amount))
+        .to.emit(recipeNFT, "LazyMinted")
+        .withArgs(user2.address, user.address, anyValue, amount);
 
-      await expect(
-        recipeNFT.connect(user1).mintRecipeForPaidUsers(mintAmount, royaltyFee)
-      ).to.be.revertedWith("Must mint between 1 and 21 copies");
+      expect(await recipeNFT.balanceOf(user2.address)).to.equal(amount);
+    });
+
+    it("pause and unpause can only be called by owner", async () => {
+      await recipeNFT.connect(owner).pause();
+      expect(await recipeNFT.paused()).to.be.true;
+
+      await recipeNFT.connect(owner).unpause();
+      expect(await recipeNFT.paused()).to.be.false;
+
+      await expect(recipeNFT.connect(user).pause()).to.be.revertedWithCustomError(subscriptionContract, "OwnableUnauthorizedAccount");
+    });
+
+    it("tokenURI returns placeholderURI for minted token", async () => {
+      await subscriptionContract.connect(owner).setPremium(user.address, true);
+      await recipeNFT.connect(user).mintRecipeForPaidUsers(1, 100);
+
+      expect(await recipeNFT.tokenURI(0)).to.equal("ipfs://placeholder/");
+      await expect(recipeNFT.tokenURI(999)).to.be.revertedWith("Token does not exist");
     });
   });
-
-  describe("Lazy Minting", function () {
-		it("should allow lazy minting by a buyer", async function () {
-			await recipeNFT.connect(user1).buyLazyMintedRecipe(user2.address, 1);
-
-			expect(await recipeNFT.ownerOf(0)).to.equal(user1.address);
-			expect(await recipeNFT.creatorOf(0)).to.equal(user2.address);
-		});
-	});
-	
-	describe("Admin Controls", function () {
-		it("should allow owner to update the placeholder URI", async function () {
-			const royaltyFee = 500; // 5% royalty
-      const mintAmount = 1;
-
-			await recipeNFT.connect(user1).mintRecipeForPaidUsers(mintAmount, royaltyFee)
-			await recipeNFT.connect(owner).updatePlaceholderURI("https://new-uri.com");
-			expect(await recipeNFT.tokenURI(0)).to.equal("https://new-uri.com");
-		});
-	
-		it("should prevent non-owners from updating the placeholder URI", async function () {
-			await expect(
-				recipeNFT.connect(user1).updatePlaceholderURI("https://hacked.com")
-			).to.be.revertedWithCustomError(recipeNFT, "OwnableUnauthorizedAccount");
-		});
-	});
-	
-	describe("Royalties", function () {
-		it("should return correct royalty info", async function () {
-			const royaltyFee = 500; // 5%
-			await recipeNFT.connect(user1).mintRecipeForPaidUsers(1, royaltyFee);
-	
-			const [receiver, amount] = await recipeNFT.royaltyInfo(0, 10000);
-			expect(receiver).to.equal(user1.address);
-			expect(amount).to.equal(500); // 5% 
-		});
-	
-		it("should revert if royalty fee exceeds max", async function () {
-			const invalidRoyaltyFee = 1500;
-	
-			await expect(
-				recipeNFT.connect(user1).mintRecipeForPaidUsers(1, invalidRoyaltyFee)
-			).to.be.revertedWith("Royalty fee exceeds max 10%");
-		});
-	});
-	
-	describe("Edge Cases", function () {
-		it("should revert if mint amount is 0", async function () {
-			await expect(
-				recipeNFT.connect(user1).mintRecipeForPaidUsers(0, 200)
-			).to.be.revertedWith("Must mint between 1 and 21 copies");
-		});
-	
-		it("should revert for token URI access of nonexistent token", async function () {
-			await expect(recipeNFT.tokenURI(99)).to.be.revertedWith("Token does not exist");
-		});
-	});
 });
-

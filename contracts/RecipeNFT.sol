@@ -4,10 +4,14 @@ pragma solidity 0.8.28;
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { ERC721AUpgradeable } from "erc721a-upgradeable/contracts/ERC721AUpgradeable.sol";
 import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import { ERC2981Upgradeable } from "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+/**
+ * @dev Interface for subscription status and premium check.
+ */
 interface ISubscription {
     function subscriptions(address user) external view returns (
         uint256 startTime,
@@ -20,16 +24,37 @@ interface ISubscription {
 }
 
 /**
- * @title RecipeNFT
- * @dev A contract for minting, managing, and interacting with Recipe NFTs.
+ * @title Mattia NFT Contract
+ * @author Pixellete Tech
+ * @notice This contract allows users with active subscriptions to mint Recipe NFTs with configurable royalty fees, 
+ *         supports lazy minting for free users.
+ * @dev Implements ERC721A for gas-efficient batch minting, ERC2981 for royalty standards, 
+ *      uses a subscription contract interface for access control, and supports upgradeability via UUPS.
  */
-contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, PausableUpgradeable, ERC2981Upgradeable, UUPSUpgradeable {
+contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable, ERC2981Upgradeable, UUPSUpgradeable {
+    /**
+     * @dev Maximum royalty fee allowed in basis points (1000 = 10%).
+     */
     uint256 private constant ROYALTY_FEE_MAX_BPS = 1000;
+
+    /**
+     * @dev Maximum number of recipe NFT copies allowed per mint transaction.
+     */
     uint256 private constant MAX_COPIES = 300;
 
-    string private placeholderURI;
+    /**
+     * @dev Placeholder URI returned for all token metadata.
+     */
+    string public placeholderURI;
+
+    /**
+     * @dev Address of the subscription contract that manages user subscription status.
+     */
     address public subscriptionContract;
 
+    /**
+     * @dev Maps each token ID to the address of its original creator.
+     */
     mapping(uint256 => address) public creatorOf;
 
     /**
@@ -39,7 +64,8 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
      */ 
     uint256[50] private __gap;
 
-    event RecipeMinted(address indexed user, uint256 indexed startTokenId, uint256 count);
+    event PaidMinted(address indexed user, uint256 indexed startTokenId, uint256 count);
+    event LazyMinted(address indexed user, address indexed creator,  uint256 startTokenId, uint256 count);
     event SubscriptionContractUpdated(address indexed newSubscriptionContract);
     event PlaceholderURIUpdated(string newURI);
 
@@ -51,11 +77,14 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
     function initialize(
         address _subscriptionContract,
         string memory _URI
-    ) public initializer {
+    ) initializerERC721A public initializer {
         require(_subscriptionContract != address(0), "Invalid subscription contract");
-
+        
+        __ERC721A_init("MattiaNFT", "MATTIA");
         __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
         __Pausable_init();
+        __ERC2981_init();
         __UUPSUpgradeable_init();  // Initialize UUPSUpgradeable
 
         subscriptionContract = _subscriptionContract;
@@ -75,7 +104,7 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
      * @param _amount Number of copies to mint.
      * @param _royaltyFeeBps Royalty fee in basis points (100 basis points = 1%).
      */
-    function mintRecipeForPaidUsers(uint256 _amount, uint96 _royaltyFeeBps) external whenNotPaused onlyPaidSubscriber {
+    function mintRecipeForPaidUsers(uint256 _amount, uint96 _royaltyFeeBps) external nonReentrant whenNotPaused onlyPaidSubscriber {
         require(_royaltyFeeBps <= ROYALTY_FEE_MAX_BPS, "Royalty fee exceeds max 10%");
         require(_amount > 0 && _amount <= MAX_COPIES, "Must mint between 1 and 300 copies");
 
@@ -86,7 +115,7 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
         }
 
         _safeMint(msg.sender, _amount);
-        emit RecipeMinted(msg.sender, startTokenId, _amount);
+        emit PaidMinted(msg.sender, startTokenId, _amount);
     }
     
     /**
@@ -94,8 +123,8 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
      * @param _creator The creator of the recipe.
      * @param _amount The number of copies to mint.
      */
-    function buyLazyMintedRecipe(address _creator, uint256 _amount) external whenNotPaused {
-        require(_amount > 0 && _amount < MAX_COPIES, "Must mint between 1 and 21 copies");
+    function buyLazyMintedRecipe(address _creator, uint256 _amount) external nonReentrant whenNotPaused {
+        require(_amount > 0 && _amount < MAX_COPIES, "Must mint between 1 and 300 copies");
         require(_creator != address(0), "Invalid address");
 
         uint256 startTokenId = _nextTokenId();
@@ -106,7 +135,7 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
 
         _safeMint(msg.sender, _amount);
 
-        emit RecipeMinted(msg.sender, startTokenId, _amount);
+        emit LazyMinted(msg.sender, _creator, startTokenId, _amount);
     }
     
     /**
@@ -162,10 +191,6 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Pau
      */
     function unpause() external onlyOwner {
         _unpause();
-    }
-
-    function nextTokenId() external view returns (uint256) {
-        return _nextTokenId();
     }
 
     /**

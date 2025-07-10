@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { IERC721A } from "erc721a/contracts/IERC721A.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
@@ -10,27 +11,62 @@ import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/P
 import { ERC2981Upgradeable } from "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
+/**
+ * @dev Interface for the RecipeNFT contract, extending the IERC721A standard.
+ */
 interface IRecipeNFT is IERC721A {
     function isPaidUser(address user) external view returns (bool);
     function supportsInterface(bytes4 interfaceId) external view returns (bool);
     function royaltyInfo(uint256 tokenId, uint256 salePrice) external view returns (address, uint256);
 }
 
+/**
+ * @title Mattia Marketplace Contract
+ * @author Pixellete Tech
+ * @notice This contract manages the marketplace functionality for listing, buying, and managing Recipe NFTs.
+ * @dev Implements marketplace logic including listing control, pricing, and royalty-aware transfers
+ */
 contract RecipeMarketplace is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable, UUPSUpgradeable {
-    uint256 private constant MAX_LISTINGS = 300;
+    using SafeERC20 for IERC20;
 
+    /**
+     * @dev Represents an NFT listing with price, seller, and accepted payment token.
+     */
     struct Listing {
         uint256 price;
         address seller;
         address paymentToken;
     }
 
-    mapping(uint256 => Listing) public listings;
-    mapping(address => bool) public allowedPaymentTokens;
+    /**
+     * @dev Maximum number of active NFT listings allowed on the marketplace.
+     */ 
+    uint256 private constant MAX_LISTINGS = 300;
 
+    /**
+     * @dev Reference to the RecipeNFT contract used for ownership and metadata validation.
+     */
     IRecipeNFT public recipeNFT;
+
+    /**
+     * @dev USDC token contract used as one of the accepted payment tokens.
+     */
     IERC20 public usdcToken;
+
+    /**
+     * @dev USDT token contract used as one of the accepted payment tokens.
+     */
     IERC20 public usdtToken;
+
+    /**
+     * @dev Maps each token ID to its active marketplace listing.
+     */
+    mapping(uint256 => Listing) public listings;
+
+    /**
+     * @dev Tracks which ERC20 tokens are allowed for purchasing NFTs.
+     */
+    mapping(address => bool) public allowedPaymentTokens;
 
     /**
      * @dev Storage gap for future upgrades
@@ -99,7 +135,7 @@ contract RecipeMarketplace is Initializable, OwnableUpgradeable, ReentrancyGuard
         require(allowedPaymentTokens[_paymentToken], "Unsupported payment token");
         require(
             recipeNFT.getApproved(_tokenId) == address(this) || recipeNFT.isApprovedForAll(msg.sender, address(this)),
-            "Marketplace not app    roved"
+            "Marketplace not approved"
         );
 
         (, uint256 royaltyAmount) = recipeNFT.royaltyInfo(_tokenId, _price);
@@ -118,7 +154,7 @@ contract RecipeMarketplace is Initializable, OwnableUpgradeable, ReentrancyGuard
      */
 
     function batchListRecipes(uint256[] calldata tokenIds, uint256 price, address paymentToken) external whenNotPaused onlyPaidUser {
-        require(tokenIds.length <= MAX_LISTINGS, "exceeds max liisting of 300");
+        require(tokenIds.length <= MAX_LISTINGS, "exceeds max listing of 300");
         require(price > 0, "Price must be > 0");
         require(allowedPaymentTokens[paymentToken], "Unsupported token");
         require( recipeNFT.isApprovedForAll(msg.sender, address(this)), "Marketplace not approved");
@@ -147,10 +183,10 @@ contract RecipeMarketplace is Initializable, OwnableUpgradeable, ReentrancyGuard
         delete listings[_tokenId];
 
         if (royaltyAmount > 0) {
-            require(payToken.transferFrom(msg.sender, royaltyReceiver, royaltyAmount), "Royalty transfer failed");
+            payToken.safeTransferFrom(msg.sender, royaltyReceiver, royaltyAmount);
         }
 
-        require(payToken.transferFrom(msg.sender, listedItem.seller, price - royaltyAmount), "Seller payment failed");
+        payToken.safeTransferFrom(msg.sender, listedItem.seller, price - royaltyAmount);
 
         recipeNFT.safeTransferFrom(listedItem.seller, msg.sender, _tokenId);
 
@@ -165,23 +201,6 @@ contract RecipeMarketplace is Initializable, OwnableUpgradeable, ReentrancyGuard
         require(recipeNFT.ownerOf(_tokenId) == msg.sender, "Not the owner");
         delete listings[_tokenId];
         emit RecipeCancelled(msg.sender, _tokenId);
-    }
-
-    /**
-     * @dev Allows the recipe owner to update a listing's price and payment token.
-     * @param _tokenId Token ID of the recipe to update.
-     * @param _newPrice New price of the recipe.
-     * @param _paymentToken New payment token (USDC or USDT).
-     */
-    function updateListing(uint256 _tokenId, uint256 _newPrice, address _paymentToken) external whenNotPaused isListed(_tokenId) {
-        require(recipeNFT.ownerOf(_tokenId) == msg.sender, "Not the owner");
-        require(_newPrice > 0, "Price must be greater than 0");
-        require(allowedPaymentTokens[_paymentToken], "Unsupported token");
-
-        listings[_tokenId].price = _newPrice;
-        listings[_tokenId].paymentToken = _paymentToken;
-
-        emit RecipeListed(_tokenId, msg.sender, _newPrice, _paymentToken);
     }
 
     /**

@@ -21,7 +21,7 @@ module.exports = {
     }
   },
 
-  defaultNetwork: "bscTestnet",
+  defaultNetwork: "hardhat",
   
   networks: {
     hardhat: { 
