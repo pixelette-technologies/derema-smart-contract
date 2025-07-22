@@ -80,7 +80,7 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Ree
     ) initializerERC721A public initializer {
         require(_subscriptionContract != address(0), "Invalid subscription contract");
         
-        __ERC721A_init("MattiaNFT", "MATTIA");
+        __ERC721A_init("FirstDOC", "MRMAC");
         __Ownable_init(msg.sender);
         __ReentrancyGuard_init();
         __Pausable_init();
