@@ -92,10 +92,7 @@ contract RecipeNFT is Initializable, ERC721AUpgradeable, OwnableUpgradeable, Ree
     }
 
     modifier onlyPaidSubscriber() {
-        ISubscription sub = ISubscription(subscriptionContract);
-        (, uint256 endTime, bool isSubbed, bool isCancelled) = sub.subscriptions(msg.sender);
-        bool isPremium = sub.isPremium(msg.sender);
-        require((isSubbed && !isCancelled && block.timestamp <= endTime) || isPremium, "Subscription invalid or expired");
+        require(isPaidUser(msg.sender), "Not a paid user");
         _;
     }
     
