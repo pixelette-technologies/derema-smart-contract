@@ -173,7 +173,7 @@ contract RecipeMarketplace is Initializable, OwnableUpgradeable, ReentrancyGuard
      * @dev Allows a subscribed user to buy a listed recipe.
      * @param _tokenId Token ID of the recipe to buy.
      */
-    function buyRecipe(uint256 _tokenId, uint256 expectedPrice) external whenNotPaused onlyPaidUser nonReentrant isListed(_tokenId) {
+    function buyRecipe(uint256 _tokenId, uint256 expectedPrice) external whenNotPaused nonReentrant isListed(_tokenId) {
         Listing memory listedItem = listings[_tokenId];
         require(listedItem.price == expectedPrice, "Price has changed");
 
